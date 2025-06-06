@@ -7,11 +7,12 @@ import json
 from datetime import datetime
 
 class OllamaVisionChat:
-    def __init__(self, upload_folder="uploads", temperature=0.2):
+    def __init__(self, upload_folder="uploads", temperature=0.2, api_endpoint="http://localhost:11434/api/generate"):
         self.upload_folder = Path(upload_folder)
         self.processed_folder = Path("processed")
         self.results_folder = Path("results")
         self.temperature = temperature
+        self.api_endpoint = api_endpoint
         
         self.upload_folder.mkdir(exist_ok=True)
         self.processed_folder.mkdir(exist_ok=True)
@@ -38,7 +39,7 @@ class OllamaVisionChat:
         }
 
         try:
-            response = requests.post("http://192.168.244.0:11434/api/generate", json=payload)
+            response = requests.post(self.api_endpoint, json=payload)
             response.raise_for_status()
             response_data = response.json()
             
@@ -56,14 +57,25 @@ class OllamaVisionChat:
     def save_result(self, image_name, prompt, response):
         """Save result as JSON"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        result_file = self.results_folder / f"result_{image_name}_{timestamp}.json"
+        # Sanitize image name to prevent path traversal
+        safe_image_name = Path(image_name).name
+        result_file = self.results_folder / f"result_{safe_image_name}_{timestamp}.json"
+        
+        # Sanitize response data
+        sanitized_response = response.copy()
+        if isinstance(sanitized_response.get('response'), dict):
+            # Remove any potentially sensitive fields from response
+            sensitive_fields = ['email', 'phone', 'address', 'name', 'password', 'token', 'key', 'secret']
+            for field in sensitive_fields:
+                if field in sanitized_response['response']:
+                    sanitized_response['response'][field] = '[REDACTED]'
         
         result_data = {
             "timestamp": timestamp,
-            "image_name": image_name,
+            "image_name": safe_image_name,  # Use sanitized name
             "prompt": prompt,
             "temperature": self.temperature,
-            "response": response
+            "response": sanitized_response
         }
         
         with open(result_file, "w", encoding="utf-8") as f:

@@ -3,6 +3,7 @@ from tkinter import filedialog, Text, scrolledtext
 import threading
 import json
 from ollama_vision_chat import OllamaVisionChat  # Importiere die Klasse aus der ollama_vision_chat.py
+from pathlib import Path
 
 class OllamaVisionChatGUI:
     def __init__(self, master):
@@ -61,22 +62,35 @@ class OllamaVisionChatGUI:
         if not image_path or not prompt:
             return
 
-        self.results_text.insert(tk.END, f"Verarbeite Bild: {image_path}\n")
+        # Sanitize displayed path
+        display_path = Path(image_path).name
+        self.results_text.insert(tk.END, f"Verarbeite Bild: {display_path}\n")
         self.results_text.insert(tk.END, f"Prompt: {prompt}\n")
 
-        n
         threading.Thread(target=self.run_ollama_chat, args=(image_path, prompt)).start()
 
     def run_ollama_chat(self, image_path, prompt):
         response = self.ollama_chat.chat_with_image(image_path, prompt)
         if response:
-            result_file = self.ollama_chat.save_result(image_path.split("/")[-1], prompt, response)
-            result_text = json.dumps(response['response'], indent=2, ensure_ascii=False)
-            self.results_text.insert(tk.END, f"\nAntwort gespeichert unter: {result_file}\n")
+            # Sanitize file path in display
+            safe_image_name = Path(image_path).name
+            result_file = self.ollama_chat.save_result(safe_image_name, prompt, response)
+            display_path = Path(result_file).name
+            
+            # Sanitize response before display
+            sanitized_response = response.copy()
+            if isinstance(sanitized_response.get('response'), dict):
+                sensitive_fields = ['email', 'phone', 'address', 'name', 'password', 'token', 'key', 'secret']
+                for field in sensitive_fields:
+                    if field in sanitized_response['response']:
+                        sanitized_response['response'][field] = '[REDACTED]'
+            
+            result_text = json.dumps(sanitized_response['response'], indent=2, ensure_ascii=False)
+            self.results_text.insert(tk.END, f"\nAntwort gespeichert unter: {display_path}\n")
             self.results_text.insert(tk.END, "-" * 50 + "\n")
             self.results_text.insert(tk.END, result_text + "\n")
             self.results_text.insert(tk.END, "-" * 50 + "\n")
-            self.results_text.insert(tk.END, f"Bild wurde in den verarbeiteten Ordner verschoben\n")
+            self.results_text.insert(tk.END, "Bild wurde in den verarbeiteten Ordner verschoben\n")
         else:
             self.results_text.insert(tk.END, "Fehler bei der Kommunikation mit Ollama\n")
 
